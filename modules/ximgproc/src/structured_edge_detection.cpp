@@ -419,7 +419,16 @@ public:
     /*!
      * This constructor loads __rf model from filename
      *
-     * \param filename : name of the file where the model is stored
+     * Refer to <https://github.com/opencv/opencv_extra/blob/master/testdata/cv/ximgproc/model.yml.gz>
+     * for a sample model file. The script used to create this model can be found
+     * at <https://github.com/opencv/opencv_contrib/blob/master/modules/ximgproc/tutorials/scripts/modelConvert.m>.
+     *
+     * Refer to StructuredEdgeDetectionImpl::loadModelFromBinaryFile and StructuredEdgeDetectionImpl::saveModelToBinaryFile
+     * for the binary format.
+     *
+     * \param filename : name of the file where the model is stored. It can have an extension
+     *                   `.bin`, `.yml` or `.yml.gz`. The `.bin` format is loaded much faster than
+     *                   the `.yml` format.
      */
     StructuredEdgeDetectionImpl(const cv::String &filename,
         Ptr<const RFFeatureGetter> _howToGetFeatures)
@@ -428,93 +437,105 @@ public:
                           ? _howToGetFeatures
                           : createRFFeatureGetter().staticCast<const RFFeatureGetter>() )
     {
-        cv::FileStorage modelFile(filename, FileStorage::READ);
-        CV_Assert( modelFile.isOpened() );
-
-        __rf.options.stride
-            = modelFile["options"]["stride"];
-        __rf.options.shrinkNumber
-            = modelFile["options"]["shrinkNumber"];
-        __rf.options.patchSize
-            = modelFile["options"]["patchSize"];
-        __rf.options.patchInnerSize
-            = modelFile["options"]["patchInnerSize"];
-
-        __rf.options.numberOfGradientOrientations
-            = modelFile["options"]["numberOfGradientOrientations"];
-        __rf.options.gradientSmoothingRadius
-            = modelFile["options"]["gradientSmoothingRadius"];
-        __rf.options.regFeatureSmoothingRadius
-            = modelFile["options"]["regFeatureSmoothingRadius"];
-        __rf.options.ssFeatureSmoothingRadius
-            = modelFile["options"]["ssFeatureSmoothingRadius"];
-        __rf.options.gradientNormalizationRadius
-            = modelFile["options"]["gradientNormalizationRadius"];
-
-        __rf.options.selfsimilarityGridSize
-            = modelFile["options"]["selfsimilarityGridSize"];
-
-        __rf.options.numberOfTrees
-            = modelFile["options"]["numberOfTrees"];
-        __rf.options.numberOfTreesToEvaluate
-            = modelFile["options"]["numberOfTreesToEvaluate"];
-
-        __rf.options.numberOfOutputChannels =
-            2*(__rf.options.numberOfGradientOrientations + 1) + 3;
-        //--------------------------------------------
-
-        cv::FileNode childs = modelFile["childs"];
-        cv::FileNode featureIds = modelFile["featureIds"];
-
-        std::vector <int> currentTree;
-
-        for(cv::FileNodeIterator it = childs.begin();
-            it != childs.end(); ++it)
+        size_t len = filename.size();
+        if ((len > 4) && (filename[len-4] == '.')
+            && (filename[len-3] == 'b')
+            && (filename[len-2] == 'i')
+            && (filename[len-1] == 'n')
+             )
         {
-            (*it) >> currentTree;
-            std::copy(currentTree.begin(), currentTree.end(),
-                std::back_inserter(__rf.childs));
+            loadModelFromBinaryFile(filename, __rf);
         }
-
-        for(cv::FileNodeIterator it = featureIds.begin();
-            it != featureIds.end(); ++it)
+        else
         {
-            (*it) >> currentTree;
-            std::copy(currentTree.begin(), currentTree.end(),
-                std::back_inserter(__rf.featureIds));
+            cv::FileStorage modelFile(filename, FileStorage::READ);
+            CV_Assert( modelFile.isOpened() );
+
+            __rf.options.stride
+                 = modelFile["options"]["stride"];
+            __rf.options.shrinkNumber
+                 = modelFile["options"]["shrinkNumber"];
+            __rf.options.patchSize
+                 = modelFile["options"]["patchSize"];
+            __rf.options.patchInnerSize
+                 = modelFile["options"]["patchInnerSize"];
+
+            __rf.options.numberOfGradientOrientations
+                 = modelFile["options"]["numberOfGradientOrientations"];
+            __rf.options.gradientSmoothingRadius
+                 = modelFile["options"]["gradientSmoothingRadius"];
+            __rf.options.regFeatureSmoothingRadius
+                 = modelFile["options"]["regFeatureSmoothingRadius"];
+            __rf.options.ssFeatureSmoothingRadius
+                 = modelFile["options"]["ssFeatureSmoothingRadius"];
+            __rf.options.gradientNormalizationRadius
+                 = modelFile["options"]["gradientNormalizationRadius"];
+
+            __rf.options.selfsimilarityGridSize
+                 = modelFile["options"]["selfsimilarityGridSize"];
+
+            __rf.options.numberOfTrees
+                 = modelFile["options"]["numberOfTrees"];
+            __rf.options.numberOfTreesToEvaluate
+                 = modelFile["options"]["numberOfTreesToEvaluate"];
+
+            __rf.options.numberOfOutputChannels =
+                 2*(__rf.options.numberOfGradientOrientations + 1) + 3;
+            //--------------------------------------------
+
+            cv::FileNode childs = modelFile["childs"];
+            cv::FileNode featureIds = modelFile["featureIds"];
+
+            std::vector <int> currentTree;
+
+            for(cv::FileNodeIterator it = childs.begin();
+                it != childs.end(); ++it)
+            {
+                (*it) >> currentTree;
+                std::copy(currentTree.begin(), currentTree.end(),
+                          std::back_inserter(__rf.childs));
+            }
+
+            for(cv::FileNodeIterator it = featureIds.begin();
+                it != featureIds.end(); ++it)
+            {
+                (*it) >> currentTree;
+                std::copy(currentTree.begin(), currentTree.end(),
+                          std::back_inserter(__rf.featureIds));
+            }
+
+            cv::FileNode thresholds = modelFile["thresholds"];
+            std::vector <float> fcurrentTree;
+
+            for(cv::FileNodeIterator it = thresholds.begin();
+                it != thresholds.end(); ++it)
+            {
+                (*it) >> fcurrentTree;
+                std::copy(fcurrentTree.begin(), fcurrentTree.end(),
+                          std::back_inserter(__rf.thresholds));
+            }
+
+            cv::FileNode edgeBoundaries = modelFile["edgeBoundaries"];
+            cv::FileNode edgeBins = modelFile["edgeBins"];
+
+            for(cv::FileNodeIterator it = edgeBoundaries.begin();
+                it != edgeBoundaries.end(); ++it)
+            {
+                (*it) >> currentTree;
+                std::copy(currentTree.begin(), currentTree.end(),
+                          std::back_inserter(__rf.edgeBoundaries));
+            }
+
+            for(cv::FileNodeIterator it = edgeBins.begin();
+                it != edgeBins.end(); ++it)
+            {
+                (*it) >> currentTree;
+                std::copy(currentTree.begin(), currentTree.end(),
+                          std::back_inserter(__rf.edgeBins));
+            }
+
+            __rf.numberOfTreeNodes = int( __rf.childs.size() ) / __rf.options.numberOfTrees;
         }
-
-        cv::FileNode thresholds = modelFile["thresholds"];
-        std::vector <float> fcurrentTree;
-
-        for(cv::FileNodeIterator it = thresholds.begin();
-            it != thresholds.end(); ++it)
-        {
-            (*it) >> fcurrentTree;
-            std::copy(fcurrentTree.begin(), fcurrentTree.end(),
-                std::back_inserter(__rf.thresholds));
-        }
-
-        cv::FileNode edgeBoundaries = modelFile["edgeBoundaries"];
-        cv::FileNode edgeBins = modelFile["edgeBins"];
-
-        for(cv::FileNodeIterator it = edgeBoundaries.begin();
-            it != edgeBoundaries.end(); ++it)
-        {
-            (*it) >> currentTree;
-            std::copy(currentTree.begin(), currentTree.end(),
-                std::back_inserter(__rf.edgeBoundaries));
-        }
-
-        for(cv::FileNodeIterator it = edgeBins.begin();
-            it != edgeBins.end(); ++it)
-        {
-            (*it) >> currentTree;
-            std::copy(currentTree.begin(), currentTree.end(),
-                std::back_inserter(__rf.edgeBins));
-        }
-
-        __rf.numberOfTreeNodes = int( __rf.childs.size() ) / __rf.options.numberOfTrees;
     }
 
     /*!
@@ -642,7 +663,6 @@ public:
       transpose(dst, dst);
       dst.copyTo(_dst);
     }
-
 
 protected:
     /*!
@@ -808,6 +828,171 @@ protected:
 
         cv::reduce( dstM.reshape(1, int( dstM.total() ) ), dstM, 2, CV_REDUCE_SUM);
         imsmooth( dstM.reshape(1, dst.rows), 1 ).copyTo(dst);
+    }
+
+protected:
+    struct RandomForest;
+
+    /**
+     * Load model from a file.
+     * \param filename [in] Model file name.
+     * \param rf       [out] Model where parameters are saved.
+     */
+    void loadModelFromBinaryFile(const String &filename, struct RandomForest &rf)
+    {
+        FILE *f = fopen(filename.c_str(), "rb");
+        CV_Assert(f);
+
+        int help;
+        size_t ret;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.stride = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.shrinkNumber = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.patchSize = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.patchInnerSize = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.numberOfGradientOrientations = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.gradientSmoothingRadius = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.regFeatureSmoothingRadius = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.ssFeatureSmoothingRadius = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.gradientNormalizationRadius = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.selfsimilarityGridSize = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.numberOfTrees = help;
+
+        ret = fread(&help, sizeof(int), 1, f);
+        rf.options.numberOfTreesToEvaluate = help;
+
+        rf.options.numberOfOutputChannels = 2*(rf.options.numberOfGradientOrientations+1)+3;
+
+        size_t len;
+        uint64_t len_;
+        ret = fread(&len_, sizeof(uint64_t), 1, f);
+        len = (size_t)len_;
+        rf.childs.resize(len);
+        ret = fread(rf.childs.data(), sizeof(int), len, f);
+
+        ret = fread(&len_, sizeof(uint64_t), 1, f);
+        len = (size_t)len_;
+        rf.featureIds.resize(len);
+        ret = fread(rf.featureIds.data(), sizeof(int), len, f);
+
+        ret = fread(&len_, sizeof(uint64_t), 1, f);
+        len = (size_t)len_;
+        rf.thresholds.resize(len);
+        ret = fread(rf.thresholds.data(), sizeof(float), len, f);
+
+        ret = fread(&len_, sizeof(uint64_t), 1, f);
+        len = (size_t)len_;
+        rf.edgeBoundaries.resize(len);
+        ret = fread(rf.edgeBoundaries.data(), sizeof(int), len, f);
+
+        ret = fread(&len_, sizeof(uint64_t), 1, f);
+        len = (size_t)len_;
+        rf.edgeBins.resize(len);
+        ret = fread(rf.edgeBins.data(), sizeof(int), len, f);
+        CV_Assert(ret == len);
+
+        rf.numberOfTreeNodes = int( rf.childs.size() ) / rf.options.numberOfTrees;
+
+        fclose(f);
+    }
+
+    /**
+     * Save model to a file.
+     * \param filename  [in] Model file name.
+     * \param rf        [in] Model parameters.
+     */
+    void saveModelToBinaryFile(const String &filename, const struct RandomForest &rf)
+    {
+        FILE *f = fopen(filename.c_str(), "wb");
+        CV_Assert(f);
+
+        int help;
+        size_t ret;
+
+        help = rf.options.stride;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.shrinkNumber;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.patchSize;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.patchInnerSize;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.numberOfGradientOrientations;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.gradientSmoothingRadius;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.regFeatureSmoothingRadius;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.ssFeatureSmoothingRadius;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.gradientNormalizationRadius;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.selfsimilarityGridSize;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.numberOfTrees;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        help = rf.options.numberOfTreesToEvaluate;
+        ret = fwrite(&help, sizeof(int), 1, f);
+
+        size_t len = rf.childs.size();
+        uint64_t len_ = len;
+        ret = fwrite(&len_, sizeof(uint64_t), 1, f);
+        ret = fwrite(rf.childs.data(), sizeof(int), len, f);
+
+        len = rf.featureIds.size();
+        len_ = len;
+        ret = fwrite(&len_, sizeof(uint64_t), 1, f);
+        ret = fwrite(rf.featureIds.data(), sizeof(int), len, f);
+
+        len = rf.thresholds.size();
+        len_ = len;
+        ret = fwrite(&len_, sizeof(uint64_t), 1, f);
+        ret = fwrite(rf.thresholds.data(), sizeof(float), len, f);
+
+        len = rf.edgeBoundaries.size();
+        len_ = len;
+        ret = fwrite(&len_, sizeof(uint64_t), 1, f);
+        ret = fwrite(rf.edgeBoundaries.data(), sizeof(int), len, f);
+
+        len = rf.edgeBins.size();
+        len_ = len;
+        ret = fwrite(&len_, sizeof(uint64_t), 1, f);
+        ret = fwrite(rf.edgeBins.data(), sizeof(int), len, f);
+        CV_Assert(ret == len);
+
+        fclose(f);
     }
 
 /********************* Members *********************/
